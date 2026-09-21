@@ -39,7 +39,9 @@ const OUTER_COUNT = 96;
  * 1. Scatter `density` sites inside one half-wedge (angle 0..π/symmetry).
  * 2. Mirror them across the wedge bisector → a full wedge with reflective symmetry.
  * 3. Rotate the wedge `symmetry` times → dihedral (kaleidoscope) symmetry.
- * 4. Add a ring of hidden boundary sites just outside the disc so edge cells
+ * 4. No site sits at the origin, so the center is cut by the same wedge
+ *    symmetry as everything else rather than forming one round hub.
+ * 5. Add a ring of hidden boundary sites just outside the disc so edge cells
  *    are closed, roughly circular polygons instead of running to infinity.
  */
 export function generateKaleidoscope(
@@ -53,13 +55,16 @@ export function generateKaleidoscope(
 
   const base: Array<[number, number]> = []; // [r, theta] within the half-wedge
   for (let i = 0; i < density; i++) {
-    // sqrt keeps the areal distribution uniform; bias slightly toward the rim for open centers
-    const r = 0.08 + 0.9 * Math.sqrt(rand());
+    // sqrt keeps the areal distribution uniform over the disc
+    const r = 0.98 * Math.sqrt(rand());
     const t = rand() * half;
     base.push([r, t]);
   }
   // one site on the bisector produces a clean seam
   base.push([0.35 + 0.5 * rand(), half]);
+  // a small-radius site on the bisector splits the center into `symmetry` wedge cells
+  // that meet at the origin, instead of one round hub
+  base.push([0.1 + 0.12 * rand(), half]);
 
   const sites: Point[] = [];
   for (let k = 0; k < symmetry; k++) {
@@ -72,8 +77,6 @@ export function generateKaleidoscope(
       }
     }
   }
-  // a site at the origin gives the pattern a clean central polygon instead of N slivers
-  sites.unshift([0, 0]);
   // dedupe near-coincident sites (mirrors on the seam etc.)
   const interior = dedupe(sites);
   const interiorCount = interior.length;
