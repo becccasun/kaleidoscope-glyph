@@ -1,11 +1,18 @@
-# Kaleidoscope Font Generator
+# Kaleidoscope Glyph
 
-Draw glyphs on radially symmetric Voronoi patterns and export a real `.otf` — entirely in the browser.
+Light the beads of a kaleidoscope to draw each letter, then export a real `.otf`. Entirely in the browser.
 
-- **Spin** builds a new dihedral-symmetric partition (4–12 fold) from a per-letter seed.
-- **Click / drag** cells to fill them black; click a black cell to clear it.
-- Every character (A–Z, 0–9, plus any custom glyph) keeps its own seed and fill state in `localStorage`.
-- **Export .otf** compiles the filled polygons into glyph outlines with `opentype.js` (1000 upm, 700-unit glyph square on the baseline, 40-unit side bearings).
+- **The chamber** is the whole stage. Every Voronoi cell is a bead of glass, dark until you press or drag across it. The interface is black, gray and white only. What glows is clipped to the glyph outline, so the chamber shows exactly what goes into the font.
+- **The letter dial** rings the chamber: turn it like a collar, press a lens, use the arrow keys, or just type a character to bring it in.
+- **Shake** (space) tumbles the current letter into a new pattern from a fresh seed. *Mirrors* (4 to 12 fold) and *Facets* recut every letter.
+- **Fill**: Glass (solid), Beads (dots) or Glitter (stars), plus *Roundness* and the number of pattern rings. Fill applies to the whole font and never clears a drawing.
+- **The word** along the bottom is set in your font from the same outlines. Dotted rings are letters you have not drawn yet: press one to draw it.
+- **Undo / redo**: ⌘Z and ⇧⌘Z, the header buttons, or the Undo on the note that appears after anything that clears drawings.
+- **Export .otf** compiles the outlines with `opentype.js` (1000 upm, 700-unit glyph square on the baseline, 40-unit side bearings).
+
+Every character keeps its own seed and drawing in `localStorage`.
+
+Several controls are adapted from [Bencho](https://bencho.dev) blocks (Jelly tabs, Tape, Hold to delete, Picker wheel) and the sounds are Bencho's, synthesised with Web Audio.
 
 ## Stack
 
@@ -13,9 +20,12 @@ Next.js (App Router, TypeScript, Tailwind v4) · `d3-delaunay` · `opentype.js` 
 
 ```
 lib/geometry.ts   seeded PRNG, kaleidoscope Voronoi generator, SVG path helper
+lib/style.ts      cell union, corner rounding, dot/star pattern fills → outline contours
 lib/font.ts       metrics + opentype.js font builder
 lib/store.ts      persisted glyph state
-components/       KaleidoscopeCanvas · GlyphGrid · GlyphThumb · Toolbar · Specimen · Editor
+lib/palette.ts    tones of white per cell, symmetric across the mirrors
+lib/sounds.ts     Web Audio voices
+components/       Studio · Scope · LetterDial · WordRow · ExportButton · GlyphThumb · JellyTabs · Tape · Hold
 ```
 
 ## Develop

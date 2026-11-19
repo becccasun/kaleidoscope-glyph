@@ -1,4 +1,5 @@
 import type { Cell, Point } from "./geometry";
+import { DEFAULT_STYLE, styleGlyph, traceContours, type GlyphStyle } from "./style";
 
 export interface GlyphSource {
   char: string;
@@ -9,6 +10,9 @@ export interface GlyphSource {
 export interface FontOptions {
   familyName: string;
   styleName?: string;
+  /** needed by dot/star fills to keep the pattern on the kaleidoscope's axes */
+  symmetry?: number;
+  style?: GlyphStyle;
 }
 
 /**
@@ -53,18 +57,15 @@ export async function buildFont(
     .filter((g) => g.filled.length > 0)
     .map((g) => {
       const path = new opentype.Path();
-      for (const i of g.filled) {
-        const cell = g.cells[i];
-        if (!cell) continue;
-        // Cells share edges but never overlap, and all carry the same winding,
-        // so nonzero fill unions them into one solid shape.
-        cell.forEach((p, j) => {
-          const [x, y] = toFontUnits(p);
-          if (j === 0) path.moveTo(r(x), r(y));
-          else path.lineTo(r(x), r(y));
-        });
-        path.close();
-      }
+      const contours = styleGlyph(g.cells, g.filled, opts.symmetry ?? 8, opts.style ?? DEFAULT_STYLE);
+      // Contours are either merged outlines (holes reversed) or non-overlapping
+      // pattern elements, so nonzero fill renders them as drawn.
+      traceContours(contours, toFontUnits, {
+        moveTo: (x, y) => path.moveTo(r(x), r(y)),
+        lineTo: (x, y) => path.lineTo(r(x), r(y)),
+        quadTo: (cx, cy, x, y) => path.quadraticCurveTo(r(cx), r(cy), r(x), r(y)),
+        close: () => path.close(),
+      });
       const code = g.char.codePointAt(0)!;
       return new opentype.Glyph({
         name: glyphName(g.char, code),
