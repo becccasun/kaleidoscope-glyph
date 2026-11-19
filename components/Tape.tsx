@@ -17,6 +17,7 @@ export function Tape({
   onChange,
   label,
   format = String,
+  settle = false,
 }: {
   min: number;
   max: number;
@@ -25,6 +26,8 @@ export function Tape({
   onChange: (value: number) => void;
   label: string;
   format?: (value: number) => string;
+  /** report only where a drag ends, not every step it crosses */
+  settle?: boolean;
 }) {
   const [drag, setDrag] = useState<number | null>(null); // the raw value under the hand
   const track = useRef<HTMLDivElement | null>(null);
@@ -65,15 +68,21 @@ export function Tape({
     } catch {
       /* a scripted pointer */
     }
-    const first = fromX(e.clientX);
-    setDrag(first);
-    commit(first);
-    const move = (ev: PointerEvent) => {
-      const now = fromX(ev.clientX);
+    let last = fromX(e.clientX);
+    let ticked = toStep(last);
+    const follow = (now: number) => {
+      last = now;
       setDrag(now);
-      commit(now);
+      if (!settle) return commit(now);
+      if (toStep(now) !== ticked) {
+        ticked = toStep(now);
+        playRatchet(0.3);
+      }
     };
+    follow(last);
+    const move = (ev: PointerEvent) => follow(fromX(ev.clientX));
     const up = () => {
+      if (settle) commit(last);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);

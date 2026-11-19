@@ -14,13 +14,21 @@ import { GlyphThumb } from "./GlyphThumb";
 import { JellyTabs } from "./JellyTabs";
 import { Tape } from "./Tape";
 import { Hold } from "./Hold";
+import { FontBook } from "./FontBook";
+import { Confirm } from "./Confirm";
 
 const MIRRORS = [4, 6, 8, 10, 12].map((n) => ({ value: n, label: String(n) }));
 const FILLS: Array<{ value: FillPattern; label: string }> = [
   { value: "solid", label: "Glass" },
   { value: "dots", label: "Beads" },
-  { value: "stars", label: "Glitter" },
+  { value: "rings", label: "Rings" },
 ];
+
+/** Mac shows ⌘ and "delete"; Windows and Linux show Ctrl and "Del". */
+const isMac = () => {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /mac|iphone|ipad|ipod/i.test(nav.userAgentData?.platform || nav.platform || nav.userAgent);
+};
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -44,11 +52,18 @@ function StudioInner() {
   const sound = useUi((u) => u.sound);
   const setSound = useUi((u) => u.setSound);
   const notify = useUi((u) => u.notify);
+  const mac = isMac();
+  const keys = mac
+    ? { undo: "⌘Z", redo: "⇧⌘Z", del: "delete" }
+    : { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z or Ctrl+Y", del: "del" };
 
   const drawn = chars.filter((c) => glyphs[c]?.filled.length).length;
   const turn = useRef(1);
   const [shaken, setShaken] = useState(0);
   const [draft, setDraft] = useState("");
+  const [book, setBook] = useState(false);
+  /** a recut waiting on the user, since it clears every drawing */
+  const [pending, setPending] = useState<{ kind: "splices" | "facets"; value: number } | null>(null);
 
   // ── the dial's size follows the room it is given ───────────────────────
   const room = useRef<HTMLDivElement>(null);
@@ -99,11 +114,16 @@ function StudioInner() {
     notify(`Cleared ${current}.`);
   };
 
-  /** Mirrors and facets rebuild every chamber, so every drawing goes with them. */
-  const recut = (apply: () => void) => {
+  /** Splices and facets rebuild every chamber, so every drawing goes with them: ask first. */
+  const applyRecut = (kind: "splices" | "facets", value: number) => {
     turn.current = 1;
-    apply();
+    if (kind === "splices") s.setSymmetry(value);
+    else s.setDensity(value);
     if (drawn) notify(`New cut: ${plural(drawn, "drawn letter")} cleared.`);
+  };
+  const recut = (kind: "splices" | "facets", value: number) => {
+    if (drawn) setPending({ kind, value });
+    else applyRecut(kind, value);
   };
 
   const live = useRef({ stepLetter, shake, clear, go });
@@ -116,9 +136,13 @@ function StudioInner() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || !!t?.isContentEditable;
-      const key = e.key.toLowerCase();
+      // the physical key as well, so other keyboard layouts still find Z and Y
+      const key = e.code === "KeyZ" ? "z" : e.code === "KeyY" ? "y" : e.key.toLowerCase();
+      // a confirm question takes no shortcuts; the font preview takes only undo and redo
+      if (document.querySelector("dialog.confirm[open]")) return;
+      const previewing = !!document.querySelector("dialog.fb[open]");
 
-      // ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y redo. Text fields keep their native undo.
+      // ⌘Z / Ctrl+Z undo; ⇧⌘Z, Ctrl+Shift+Z or Ctrl+Y redo. Text fields keep their native undo.
       if ((e.metaKey || e.ctrlKey) && !e.altKey) {
         const isRedo = (key === "z" && e.shiftKey) || (key === "y" && e.ctrlKey && !e.metaKey);
         if ((key !== "z" && !isRedo) || typing) return;
@@ -128,7 +152,7 @@ function StudioInner() {
         else st.undo();
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing || previewing) return;
       // a focused control keeps its own keys
       const onControl = !!t?.closest("button, [role=slider], [role=radiogroup], a");
 
@@ -141,7 +165,7 @@ function StudioInner() {
         e.preventDefault();
         if (!e.repeat) live.current.shake();
       } else if (e.key === "Backspace" || e.key === "Delete") {
-        if (onControl) return;
+        // clears only the letter in the chamber, even with a button or tab still focused
         e.preventDefault();
         live.current.clear();
       } else if ([...e.key].length === 1) {
@@ -163,9 +187,8 @@ function StudioInner() {
     <div className="studio">
       <header className="bar">
         <div className="bar-name">
-          <Mark />
           <div className="bar-titles">
-            <span className="bar-word">Kaleidoscope Glyph</span>
+            <span className="bar-word">becca&apos;s kaleidoglyph</span>
             <input
               className="bar-font"
               value={s.fontName}
@@ -178,13 +201,13 @@ function StudioInner() {
           </div>
         </div>
         <div className="bar-tools">
-          <button type="button" className="icon" onClick={s.undo} disabled={!s.past.length} aria-label="Undo" title="Undo (⌘Z)">
+          <button type="button" className="icon" onClick={s.undo} disabled={!s.past.length} aria-label="Undo" title={`Undo (${keys.undo})`}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M9 14 4 9l5-5" />
               <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
             </svg>
           </button>
-          <button type="button" className="icon" onClick={s.redo} disabled={!s.future.length} aria-label="Redo" title="Redo (⇧⌘Z)">
+          <button type="button" className="icon" onClick={s.redo} disabled={!s.future.length} aria-label="Redo" title={`Redo (${keys.redo})`}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m15 14 5-5-5-5" />
               <path d="M20 9H10a6 6 0 0 0 0 12h3" />
@@ -209,6 +232,15 @@ function StudioInner() {
                 <path d="m16 9 5 6m0-6-5 6" />
               )}
             </svg>
+          </button>
+          <button type="button" className="btn preview" onClick={() => setBook(true)} title="See the whole font">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="4" width="6" height="6" rx="1" />
+              <rect x="14" y="4" width="6" height="6" rx="1" />
+              <rect x="4" y="14" width="6" height="6" rx="1" />
+              <rect x="14" y="14" width="6" height="6" rx="1" />
+            </svg>
+            Preview font
           </button>
           <ExportButton />
         </div>
@@ -238,15 +270,16 @@ function StudioInner() {
             </button>
             <button type="button" className="btn" onClick={clear} disabled={!glyph.filled.length}>
               Clear
+              <kbd>{keys.del}</kbd>
             </button>
           </div>
 
-          <Control label="Mirrors" note="recuts every letter">
-            <JellyTabs label="Mirrors" options={MIRRORS} value={symmetry} onChange={(n) => recut(() => s.setSymmetry(n))} />
+          <Control label="Radial splicing">
+            <JellyTabs label="Radial splicing" options={MIRRORS} value={symmetry} onChange={(n) => recut("splices", n)} />
           </Control>
 
-          <Control label="Facets" note="recuts every letter">
-            <Tape label="Facets" min={3} max={16} value={density} onChange={(n) => recut(() => s.setDensity(n))} />
+          <Control label="Facets">
+            <Tape label="Facets" min={3} max={16} value={density} onChange={(n) => recut("facets", n)} settle />
           </Control>
         </aside>
 
@@ -303,7 +336,7 @@ function StudioInner() {
           </Control>
 
           {s.fill !== "solid" && (
-            <Control label={s.fill === "dots" ? "Bead rings" : "Glitter rings"}>
+            <Control label={s.fill === "dots" ? "Bead rings" : "Ring count"}>
               <Tape label="Rings of pattern" min={6} max={24} value={s.grain} onChange={s.setGrain} />
             </Control>
           )}
@@ -361,6 +394,18 @@ function StudioInner() {
       </main>
 
       <WordRow onPick={(c) => go(c)} />
+      <Confirm
+        open={!!pending}
+        title={pending?.kind === "facets" ? "Change facet count?" : "Change splice count?"}
+        body={`This will delete your existing progress: ${plural(drawn, "drawn letter")} will be cleared.`}
+        confirmLabel="Delete and change"
+        onConfirm={() => {
+          if (pending) applyRecut(pending.kind, pending.value);
+          setPending(null);
+        }}
+        onCancel={() => setPending(null)}
+      />
+      <FontBook open={book} onClose={() => setBook(false)} onPick={(c) => go(c)} />
       <Toast />
     </div>
   );
@@ -402,18 +447,5 @@ function Toast() {
         Undo
       </button>
     </div>
-  );
-}
-
-/** Placeholder mark: six beads round a seventh. To be replaced with the real logo. */
-function Mark() {
-  return (
-    <svg className="mark" viewBox="0 0 28 28" aria-hidden="true">
-      {[0, 1, 2, 3, 4, 5].map((i) => {
-        const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-        return <circle key={i} cx={14 + 8.2 * Math.cos(a)} cy={14 + 8.2 * Math.sin(a)} r="3.6" />;
-      })}
-      <circle cx="14" cy="14" r="3.6" />
-    </svg>
   );
 }

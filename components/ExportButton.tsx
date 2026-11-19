@@ -6,7 +6,7 @@ import { generateKaleidoscope } from "@/lib/geometry";
 import { buildFont, downloadBlob } from "@/lib/font";
 import { playPrint, playReady } from "@/lib/sounds";
 
-const STYLE_NAMES = { solid: "Regular", dots: "Beads", stars: "Glitter" } as const;
+const STYLE_NAMES = { solid: "Regular", dots: "Beads", rings: "Rings" } as const;
 
 export function ExportButton() {
   const [state, setState] = useState<"idle" | "busy" | "saved">("idle");

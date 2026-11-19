@@ -197,11 +197,13 @@ export const useFontStore = create<FontStore>()(
     },
     {
       name: "kaleidoscope-font-v1",
-      version: 1,
-      // v0 shipped with "Kaleidoscope" as the untouched default name
+      version: 2,
       migrate: (state) => {
-        const s = state as { fontName?: string };
+        const s = state as { fontName?: string; fill?: string };
+        // v0 shipped with "Kaleidoscope" as the untouched default name
         if (s?.fontName === "Kaleidoscope") s.fontName = "My Font #1";
+        // v1 had a star "glitter" fill, since replaced by rings
+        if (s?.fill === "stars") s.fill = "rings";
         return s as never;
       },
       // history lives for the session only

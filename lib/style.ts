@@ -1,12 +1,12 @@
 import type { Cell, Point } from "./geometry";
 
-export type FillPattern = "solid" | "dots" | "stars";
+export type FillPattern = "solid" | "dots" | "rings";
 
 export interface GlyphStyle {
   /** 0 = sharp polygon corners, 1 = fully blobby */
   roundness: number;
   fill: FillPattern;
-  /** dot/star rings from center to rim — higher is denser */
+  /** pattern rings from center to rim — higher is denser */
   grain: number;
 }
 
@@ -41,7 +41,8 @@ const SMOOTH_SPACING = 0.02;
  * Turns a glyph's filled cells into its final outlines:
  * 1. union the cells into boundary loops (shared edges cancel),
  * 2. round it by `roundness` (see roundLoop),
- * 3. for dots/stars, keep the pattern elements whose centers land inside that shape.
+ * 3. for dots, keep the dots whose centers land inside that shape; for rings, keep the
+ *    stretches of each concentric band that run inside it.
  */
 export function styleGlyph(
   cells: Cell[],
@@ -54,11 +55,11 @@ export function styleGlyph(
   if (style.fill === "solid") return shape;
 
   const inside = insideTester(shape.map((c) => flatten(c, 4)));
+  if (style.fill === "rings") return ringBands(inside, symmetry, style.grain);
   const s = 1 / style.grain;
   const out: Contour[] = [];
-  for (const [x, y, angle] of patternSites(symmetry, style.grain)) {
-    if (!inside(x, y)) continue;
-    out.push(style.fill === "dots" ? dot(x, y, s * 0.36) : star(x, y, s * 0.52, angle));
+  for (const [x, y] of patternSites(symmetry, style.grain)) {
+    if (inside(x, y)) out.push(dot(x, y, s * 0.36));
   }
   return out;
 }
@@ -281,15 +282,54 @@ function dot(x: number, y: number, r: number): Contour {
   return { start: at(0, r), segs };
 }
 
-function star(x: number, y: number, r: number, angle: number): Contour {
-  // five points, the first aimed outward along `angle`
-  const pts: Point[] = [];
-  for (let i = 0; i < 10; i++) {
-    const a = angle + (i / 10) * Math.PI * 2;
-    const rr = i % 2 ? r * 0.42 : r;
-    pts.push([x + rr * Math.cos(a), y + rr * Math.sin(a)]);
+/**
+ * Concentric bands, one per ring of the dot pattern, cut where they leave the shape.
+ * Each ring is split into short steps (a multiple of `symmetry`, so the cuts keep the
+ * kaleidoscope's symmetry); consecutive steps inside the shape join into one arc, so a
+ * band reads as a continuous line rather than a row of tiles. The center is a dot.
+ */
+function ringBands(inside: (x: number, y: number) => boolean, symmetry: number, grain: number): Contour[] {
+  const s = 1 / grain;
+  const half = s * 0.3; // band 0.6 of the pitch, gap 0.4
+  const out: Contour[] = [];
+  if (inside(0, 0)) out.push(dot(0, 0, half));
+  for (let k = 1; k <= grain; k++) {
+    const r = k * s;
+    const n = Math.max(1, Math.round((2 * Math.PI * r) / (s * 0.35) / symmetry)) * symmetry;
+    const da = (Math.PI * 2) / n;
+    const on = Array.from({ length: n }, (_, j) => inside(r * Math.cos((j + 0.5) * da), r * Math.sin((j + 0.5) * da)));
+    if (on.every(Boolean)) {
+      out.push(...arcBand(r - half, r + half, 0, n, da, true));
+      continue;
+    }
+    // start the walk on a gap so no run wraps past the end
+    const from = on.indexOf(false);
+    let run = -1;
+    for (let t = 1; t <= n; t++) {
+      const j = (from + t) % n;
+      if (on[j] && run < 0) run = from + t;
+      if ((!on[j] || t === n) && run >= 0) {
+        out.push(...arcBand(r - half, r + half, run, from + t, da, false));
+        run = -1;
+      }
+    }
   }
-  return { start: pts[0], segs: pts.slice(1).map((to) => ({ to })) };
+  return out;
+}
+
+/**
+ * The band between radii r0 and r1 from step a to step b. A full ring is an outer circle
+ * and a reversed inner one, so nonzero winding leaves the middle open.
+ */
+function arcBand(r0: number, r1: number, a: number, b: number, da: number, full: boolean): Contour[] {
+  const at = (step: number, r: number): Point => [r * Math.cos(step * da), r * Math.sin(step * da)];
+  const ctl = (step: number, r: number) => at(step + 0.5, r / Math.cos(da / 2));
+  const outer: Seg[] = [];
+  for (let i = a; i < b; i++) outer.push({ c: ctl(i, r1), to: at(i + 1, r1) });
+  const inner: Seg[] = [];
+  for (let i = b; i > a; i--) inner.push({ c: ctl(i - 1, r0), to: at(i - 1, r0) });
+  if (full) return [{ start: at(a, r1), segs: outer }, { start: at(b, r0), segs: inner }];
+  return [{ start: at(a, r1), segs: [...outer, { to: at(b, r0) }, ...inner] }];
 }
 
 /** Contour → polyline, sampling each quadratic `steps` times. */

@@ -22,7 +22,7 @@ if (solidSharp.length !== 1) throw new Error("expected a central blob to merge i
 for (const style of [
   { roundness: 0.6, fill: "solid", grain: 12 },
   { roundness: 0.3, fill: "dots", grain: 14 },
-  { roundness: 1, fill: "stars", grain: 10 },
+  { roundness: 1, fill: "rings", grain: 10 },
 ] as const) {
   const c = styleGlyph(k.cells, blob, 8, style);
   const b = await buildFont([{ char: "A", cells: k.cells, filled: blob }], { familyName: "T", symmetry: 8, style });
@@ -44,15 +44,15 @@ for (const style of [
     }
     return w;
   };
-  const stars = styleGlyph(k12.cells, pick, 12, { roundness: 0, fill: "stars", grain: 24 });
+  const dots = styleGlyph(k12.cells, pick, 12, { roundness: 0, fill: "dots", grain: 24 });
   let leaked = 0;
-  for (const c of stars) {
+  for (const c of dots) {
     const pts = [c.start, ...c.segs.map((s) => s.to)];
     const x = pts.reduce((a, p) => a + p[0], 0) / pts.length;
     const y = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-    // a star whose every point is outside the filled cells has leaked
+    // a dot whose every point is outside the filled cells has leaked
     if (!pick.some((f) => pts.some((p) => inCell(k12.cells[f], p[0], p[1])) || inCell(k12.cells[f], x, y))) leaked++;
   }
-  console.log("axis-edge regression:", stars.length, "stars,", leaked, "leaked");
-  if (leaked) throw new Error(`${leaked} stars landed outside the filled cells`);
+  console.log("axis-edge regression:", dots.length, "dots,", leaked, "leaked");
+  if (leaked) throw new Error(`${leaked} dots landed outside the filled cells`);
 }

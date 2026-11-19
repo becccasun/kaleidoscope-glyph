@@ -373,7 +373,7 @@ function drawBeads(
   ctx.fillRect(0, 0, size, size);
 
   // unlit glass: every bead shows faintly; painted ones a little more,
-  // so a glyph stays readable under dots and glitter
+  // so a glyph stays readable under beads and rings
   cells.forEach((cell, i) => {
     ctx.beginPath();
     tracePoly(ctx, cell, size);
